@@ -244,7 +244,37 @@ useEffect(() => {
       settled = true;
       clearTimeout(safetyTimer);
     })();
+async function handleStickerClick(stickerId) {
+  if (!userId) return;
 
+  const exists = stickers.find(s => s.sticker_id === stickerId);
+
+  const status = exists ? "duplicate" : "own";
+
+  const { data, error } = await supabase
+    .from("user_stickers")
+    .upsert(
+      {
+        user_id: userId,
+        sticker_id: stickerId,
+        status: status,
+      },
+      {
+        onConflict: "user_id,sticker_id"
+      }
+    )
+    .select();
+
+  if (error) {
+    console.log(error);
+    return;
+  }
+
+  setStickers(prev => {
+    const filtered = prev.filter(s => s.sticker_id !== stickerId);
+    return [...filtered, data[0]];
+  });
+}
     return () => clearTimeout(safetyTimer);
   }, []);
 
