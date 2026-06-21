@@ -175,6 +175,7 @@ export default function App() {
           .eq("sticker_id", key);
         if (error) {
           console.error("Supabase delete error:", error);
+          alert("Fehler beim Löschen: " + error.message + (error.hint ? "\nHinweis: " + error.hint : "") + (error.details ? "\nDetails: " + error.details : ""));
           setMyStickers(myStickers); // bei Fehler zurückrollen
         }
       } else {
@@ -186,6 +187,7 @@ export default function App() {
           );
         if (error) {
           console.error("Supabase upsert error:", error);
+          alert("Fehler beim Speichern: " + error.message + (error.hint ? "\nHinweis: " + error.hint : "") + (error.details ? "\nDetails: " + error.details : ""));
           setMyStickers(myStickers); // bei Fehler zurückrollen
         }
       }
