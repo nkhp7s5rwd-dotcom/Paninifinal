@@ -171,6 +171,8 @@ async function safeDelete(key, shared) {
 }
 
 export default function App() {
+   const [userId, setUserId] = useState(null);
+const [stickers, setStickers] = useState([]);
   const [profile, setProfile] = useState(undefined); // undefined = lädt, null = ausgeloggt
   const [sections, setSections] = useState(DEFAULT_SECTIONS);
   const [users, setUsers] = useState([]);
