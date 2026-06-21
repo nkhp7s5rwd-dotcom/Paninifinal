@@ -168,12 +168,26 @@ export default function App() {
       setMyStickers(updated); // optimistisches Update
 
       if (next === "missing") {
-        await supabase.from("user_stickers").delete()
-          .eq("user_id", profile.id).eq("sticker_id", key);
+        const { error } = await supabase
+          .from("user_stickers")
+          .delete()
+          .eq("user_id", profile.id)
+          .eq("sticker_id", key);
+        if (error) {
+          console.error("Supabase delete error:", error);
+          setMyStickers(myStickers); // bei Fehler zurückrollen
+        }
       } else {
-        await supabase.from("user_stickers")
-          .upsert({ user_id: profile.id, sticker_id: key, status: next },
-                   { onConflict: "user_id,sticker_id" });
+        const { error } = await supabase
+          .from("user_stickers")
+          .upsert(
+            { user_id: profile.id, sticker_id: key, status: next },
+            { onConflict: "user_id,sticker_id" }
+          );
+        if (error) {
+          console.error("Supabase upsert error:", error);
+          setMyStickers(myStickers); // bei Fehler zurückrollen
+        }
       }
     },
     [myStickers, profile]
