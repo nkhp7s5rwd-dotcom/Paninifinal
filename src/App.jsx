@@ -187,7 +187,20 @@ const [stickers, setStickers] = useState([]);
   useEffect(() => {
     if (typeof document !== "undefined") document.title = "Yannes' Tauschbörse";
   }, []);
+useEffect(() => {
+  async function loadStickers() {
+    const { data } = await supabase
+      .from("user_stickers")
+      .select("*")
+      .eq("user_id", userId);
 
+    setStickers(data || []);
+  }
+
+  if (userId) {
+    loadStickers();
+  }
+}, [userId]);
   // ---- initial load (mit Sicherheitsnetz, damit nie ewig geladen wird) ----
   useEffect(() => {
     let settled = false;
