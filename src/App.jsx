@@ -2,33 +2,44 @@ import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
 export default function App() {
-  const [userId, setUserId] = useState(null);
+  const [userId, setUserId] = useState("loading");
 
   useEffect(() => {
     async function init() {
-      // 1. check current session
-      const { data: session } = await supabase.auth.getSession();
+      try {
+        // 1. Session prüfen
+        const { data: sessionData } = await supabase.auth.getSession();
 
-      if (session?.session?.user) {
-        setUserId(session.session.user.id);
-        return;
+        const sessionUser = sessionData?.session?.user;
+
+        if (sessionUser) {
+          setUserId(sessionUser.id);
+          return;
+        }
+
+        // 2. Anonymous Login erzwingen
+        const { data, error } = await supabase.auth.signInAnonymously();
+
+        if (error) {
+          console.log("Auth error:", error);
+
+          // fallback damit es NICHT hängt
+          setUserId("no-auth-fallback-" + crypto.randomUUID());
+          return;
+        }
+
+        setUserId(data.user.id);
+      } catch (err) {
+        console.log("Fatal error:", err);
+
+        setUserId("fallback-" + crypto.randomUUID());
       }
-
-      // 2. fallback login
-      const { data, error } = await supabase.auth.signInAnonymously();
-
-      if (error) {
-        console.log("Login error:", error);
-        return;
-      }
-
-      setUserId(data.user.id);
     }
 
     init();
   }, []);
 
-  if (!userId) return <p>Lade...</p>;
+  if (userId === "loading") return <p>Lade...</p>;
 
   return (
     <div style={{ padding: 20 }}>
