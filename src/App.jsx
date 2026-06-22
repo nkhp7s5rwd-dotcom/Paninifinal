@@ -200,7 +200,7 @@ export default function App() {
     [myStickers, profile]
   );
 
-  // ---- PDF Export ----
+  // ---- PDF Export (als Download, kein Popup nötig) ----
   const exportPDF = useCallback(() => {
     if (!myStickers || !profile) return;
 
@@ -227,61 +227,58 @@ export default function App() {
       </tr>
     `).join("");
 
-    const html = `
-      <!DOCTYPE html>
-      <html lang="de">
-      <head>
-        <meta charset="UTF-8">
-        <title>Yannes' Tauschbörse – ${profile.name}</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;700&display=swap');
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: 'Manrope', sans-serif; color: #1C2541; padding: 28px; font-size: 11px; }
-          h1 { font-family: 'Anton', sans-serif; font-size: 22px; letter-spacing: 0.5px; margin-bottom: 2px; }
-          .subtitle { font-size: 11px; color: #665f45; margin-bottom: 20px; }
-          h2 { font-family: 'Anton', sans-serif; font-size: 14px; margin: 18px 0 6px; }
-          .badge-red { display: inline-block; background: #1C2541; color: white; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
-          .badge-amber { display: inline-block; background: #E2862F; color: white; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-          th { background: #1C2541; color: #D9A441; font-family: 'Anton', sans-serif; font-size: 11px; letter-spacing: 0.5px; padding: 6px 10px; text-align: left; }
-          td { padding: 5px 10px; border-bottom: 1px solid #e8dec4; vertical-align: top; }
-          tr:nth-child(even) td { background: #f9f5ec; }
-          .empty { color: #8a8265; font-style: italic; margin: 8px 0; }
-          .footer { margin-top: 24px; font-size: 9px; color: #aaa; border-top: 1px solid #e8dec4; padding-top: 8px; }
-        </style>
-      </head>
-      <body>
-        <h1>Yannes' Tauschbörse</h1>
-        <div class="subtitle">WM 2026 · Sammler: ${profile.name} · Erstellt am ${new Date().toLocaleDateString("de-DE")}</div>
+    const html = `<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Yannes Tauschboerse</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; color: #1C2541; padding: 28px; font-size: 11px; }
+    h1 { font-size: 22px; margin-bottom: 2px; }
+    .subtitle { font-size: 11px; color: #665f45; margin-bottom: 20px; }
+    h2 { font-size: 14px; margin: 18px 0 6px; }
+    .badge { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
+    .badge-dark { background: #1C2541; color: white; }
+    .badge-amber { background: #E2862F; color: white; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th { background: #1C2541; color: #D9A441; font-size: 11px; padding: 6px 10px; text-align: left; }
+    td { padding: 5px 10px; border-bottom: 1px solid #e8dec4; vertical-align: top; }
+    tr:nth-child(even) td { background: #f9f5ec; }
+    .empty { color: #8a8265; font-style: italic; margin: 8px 0; }
+    .footer { margin-top: 24px; font-size: 9px; color: #aaa; border-top: 1px solid #e8dec4; padding-top: 8px; }
+    @media print { body { padding: 10px; } }
+  </style>
+</head>
+<body>
+  <h1>Yannes' Tauschboerse</h1>
+  <div class="subtitle">WM 2026 &middot; Sammler: ${profile.name} &middot; ${new Date().toLocaleDateString("de-DE")}</div>
 
-        <h2>Fehlende Sticker <span class="badge-red">${missing.reduce((s, r) => s + r.numbers.length, 0)}</span></h2>
-        ${missing.length === 0
-          ? '<div class="empty">Keine fehlenden Sticker – Sammlung vollständig!</div>'
-          : `<table>
-              <thead><tr><th>Abschnitt</th><th>Sticker-Nummern</th></tr></thead>
-              <tbody>${tableRows(missing)}</tbody>
-            </table>`
-        }
+  <h2>Fehlende Sticker <span class="badge badge-dark">${missing.reduce((s, r) => s + r.numbers.length, 0)}</span></h2>
+  ${missing.length === 0
+    ? '<div class="empty">Keine fehlenden Sticker!</div>'
+    : `<table><thead><tr><th>Abschnitt</th><th>Sticker-Nummern</th></tr></thead><tbody>${tableRows(missing)}</tbody></table>`
+  }
 
-        <h2>Doppelte Sticker <span class="badge-amber">${duplicates.reduce((s, r) => s + r.numbers.length, 0)}</span></h2>
-        ${duplicates.length === 0
-          ? '<div class="empty">Keine doppelten Sticker.</div>'
-          : `<table>
-              <thead><tr><th>Abschnitt</th><th>Sticker-Nummern</th></tr></thead>
-              <tbody>${tableRows(duplicates)}</tbody>
-            </table>`
-        }
+  <h2>Doppelte Sticker <span class="badge badge-amber">${duplicates.reduce((s, r) => s + r.numbers.length, 0)}</span></h2>
+  ${duplicates.length === 0
+    ? '<div class="empty">Keine doppelten Sticker.</div>'
+    : `<table><thead><tr><th>Abschnitt</th><th>Sticker-Nummern</th></tr></thead><tbody>${tableRows(duplicates)}</tbody></table>`
+  }
 
-        <div class="footer">Yannes' Tauschbörse · WM 2026 Panini Stickertracker</div>
-      </body>
-      </html>
-    `;
+  <div class="footer">Yannes' Tauschboerse &middot; WM 2026 Panini Stickertracker</div>
+  <script>window.onload = function() { window.print(); }<\/script>
+</body>
+</html>`;
 
-    const win = window.open("", "_blank");
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); }, 600);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   }, [myStickers, profile]);
 
   const myStats = useMemo(() => {
@@ -549,17 +546,27 @@ function OthersView({ users }) {
 /* ===================== Tauschbörse ===================== */
 
 function TradeView({ profile, myStickers, users }) {
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [allRows, setAllRows] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const toggleUser = (id) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+    setAllRows(null); // Ergebnisse zurücksetzen wenn Auswahl ändert
+  };
+
+  const search = async () => {
+    if (selectedUserIds.length === 0) return;
     setLoading(true);
-    (async () => {
-      const { data } = await supabase.from("user_stickers").select("user_id, sticker_id, status");
-      setAllRows(data || []);
-      setLoading(false);
-    })();
-  }, []);
+    const { data } = await supabase
+      .from("user_stickers")
+      .select("user_id, sticker_id, status")
+      .in("user_id", selectedUserIds);
+    setAllRows(data || []);
+    setLoading(false);
+  };
 
   const nameOf = useCallback((id) => users.find((u) => u.id === id)?.name || "Unbekannt", [users]);
 
@@ -582,9 +589,9 @@ function TradeView({ profile, myStickers, users }) {
   const offersForMe = useMemo(() => {
     if (!allRows) return [];
     return allRows
-      .filter((r) => r.status === "duplicate" && r.user_id !== profile.id && myMissingKeys.has(r.sticker_id))
+      .filter((r) => r.status === "duplicate" && myMissingKeys.has(r.sticker_id))
       .map((r) => ({ user: nameOf(r.user_id), key: r.sticker_id }));
-  }, [allRows, myMissingKeys, profile, nameOf]);
+  }, [allRows, myMissingKeys, nameOf]);
 
   const requestsFromOthers = useMemo(() => {
     if (!allRows) return [];
@@ -595,47 +602,73 @@ function TradeView({ profile, myStickers, users }) {
     });
     const reqs = [];
     myDuplicateKeys.forEach((key) => {
-      users.forEach((u) => {
-        const has = presenceByUser[u.id]?.has(key);
-        if (!has) reqs.push({ user: u.name, key });
+      selectedUserIds.forEach((uid) => {
+        if (!presenceByUser[uid]?.has(key)) reqs.push({ user: nameOf(uid), key });
       });
     });
     return reqs;
-  }, [allRows, myDuplicateKeys, users]);
+  }, [allRows, myDuplicateKeys, selectedUserIds, nameOf]);
 
   if (users.length === 0) {
-    return <EmptyState text="Sobald sich weitere Sammler eintragen, zeigt dir die Tauschbörse passende Treffer." />;
+    return <EmptyState text="Sobald sich weitere Sammler eintragen, kannst du hier Tauschmöglichkeiten prüfen." />;
   }
-  if (loading) return <div style={styles.note}>Suche nach Tauschmöglichkeiten …</div>;
 
   return (
     <div>
-      <SectionTitle>Das kannst du bekommen</SectionTitle>
-      {offersForMe.length === 0 ? (
-        <EmptyState text="Aktuell hat niemand einen Sticker doppelt, den du noch brauchst." />
-      ) : (
-        <ul style={styles.tradeList}>
-          {offersForMe.map((o, i) => (
-            <li key={i} style={styles.tradeItem}>
-              <span style={styles.tradeBadgeGreen}>2×</span>
-              <b>{o.key.replace("#", " #")}</b> — <b>{o.user}</b> hat ihn doppelt
-            </li>
-          ))}
-        </ul>
-      )}
+      <SectionTitle>Mit wem möchtest du tauschen?</SectionTitle>
+      <div style={styles.userPickerGrid}>
+        {users.map((u) => {
+          const selected = selectedUserIds.includes(u.id);
+          return (
+            <button
+              key={u.id}
+              onClick={() => toggleUser(u.id)}
+              style={{ ...styles.userChip, ...(selected ? styles.userChipActive : {}) }}
+            >
+              {selected ? "✓ " : ""}{u.name}
+            </button>
+          );
+        })}
+      </div>
 
-      <SectionTitle>Das kannst du anbieten</SectionTitle>
-      {requestsFromOthers.length === 0 ? (
-        <EmptyState text="Niemand braucht aktuell einen deiner doppelten Sticker." />
-      ) : (
-        <ul style={styles.tradeList}>
-          {requestsFromOthers.map((r, i) => (
-            <li key={i} style={styles.tradeItem}>
-              <span style={styles.tradeBadgeAmber}>fehlt</span>
-              <b>{r.key.replace("#", " #")}</b> — <b>{r.user}</b> sucht ihn, du hast ihn doppelt
-            </li>
-          ))}
-        </ul>
+      <button
+        onClick={search}
+        disabled={selectedUserIds.length === 0 || loading}
+        style={{ ...styles.searchButton, opacity: selectedUserIds.length === 0 ? 0.5 : 1 }}
+      >
+        {loading ? "Suche läuft …" : "Tauschmöglichkeiten prüfen"}
+      </button>
+
+      {allRows && !loading && (
+        <>
+          <SectionTitle>Das kannst du bekommen</SectionTitle>
+          {offersForMe.length === 0 ? (
+            <EmptyState text="Niemand aus deiner Auswahl hat einen Sticker doppelt, den du brauchst." />
+          ) : (
+            <ul style={styles.tradeList}>
+              {offersForMe.map((o, i) => (
+                <li key={i} style={styles.tradeItem}>
+                  <span style={styles.tradeBadgeGreen}>2×</span>
+                  <b>{o.key.replace("#", " #")}</b> — <b>{o.user}</b> hat ihn doppelt
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <SectionTitle>Das kannst du anbieten</SectionTitle>
+          {requestsFromOthers.length === 0 ? (
+            <EmptyState text="Niemand aus deiner Auswahl braucht deine doppelten Sticker." />
+          ) : (
+            <ul style={styles.tradeList}>
+              {requestsFromOthers.map((r, i) => (
+                <li key={i} style={styles.tradeItem}>
+                  <span style={styles.tradeBadgeAmber}>fehlt</span>
+                  <b>{r.key.replace("#", " #")}</b> — <b>{r.user}</b> sucht ihn, du hast ihn doppelt
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
@@ -710,6 +743,10 @@ const styles = {
   tradeBadgeGreen: { background: COLORS.have, color: "white", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "2px 7px" },
   tradeBadgeAmber: { background: COLORS.dup, color: "white", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "2px 7px" },
   emptyState: { fontSize: 13.5, color: "#8a8265", background: COLORS.paperDark, borderRadius: 10, padding: "16px 14px" },
+  userPickerGrid: { display: "flex", flexWrap: "wrap", gap: 8, margin: "10px 0 14px" },
+  userChip: { padding: "8px 14px", borderRadius: 999, border: `2px solid ${COLORS.missing}`, background: COLORS.white, color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" },
+  userChipActive: { background: COLORS.ink, color: COLORS.gold, borderColor: COLORS.ink },
+  searchButton: { width: "100%", padding: "13px", borderRadius: 10, border: "none", background: COLORS.gold, color: COLORS.ink, fontFamily: "'Anton', sans-serif", fontSize: 15, letterSpacing: 0.5, cursor: "pointer", marginBottom: 4 },
   loginWrap: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.ink, padding: 20 },
   loginCard: { background: COLORS.paper, borderRadius: 18, padding: "26px 24px 22px", maxWidth: 360, width: "100%", boxShadow: "0 20px 50px rgba(0,0,0,0.4)", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", overflow: "hidden" },
   loginRibbon: { position: "absolute", top: 14, right: -38, background: COLORS.gold, color: COLORS.ink, fontFamily: "'Anton', sans-serif", fontSize: 12, padding: "4px 40px", transform: "rotate(35deg)", letterSpacing: 1, fontWeight: 700 },
