@@ -292,6 +292,9 @@ export default function App() {
     await supabase.from("trade_requests").update({ status: "cancelled" }).eq("id", reqId);
     await loadRequests(profile.id);
   };
+
+  // ---- Anfrage ablehnen ----
+  const declineRequest = async (reqId) => {
     await supabase.from("trade_requests").update({ status: "declined" }).eq("id", reqId);
     await loadRequests(profile.id);
   };
@@ -725,9 +728,9 @@ function AnfragenView({ profile, incomingRequests, sentRequests, users, onAccept
             <li key={req.id} style={{ ...s.sentCard, flexWrap: "wrap", gap: 8 }}>
               <span style={{ ...s.tradeBadgePending, background: statusColor(req.status) }}>{statusLabel(req.status)}</span>
               <span style={{ flex: 1 }}><b>{stickerLabel(req.sticker_id)}</b> → <b>{nameOf(req.to_user_id)}</b></span>
-              {req.status === "pending" && (
+              {(req.status === "pending" || req.status === "accepted") && (
                 <button
-                  style={{ ...s.declineBtn, padding: "3px 10px", fontSize: 11.5, cursor: "pointer" }}
+                  style={{ ...s.declineBtn, padding: "5px 12px", fontSize: 12, cursor: "pointer", border: "1px solid #b3401a", color: "#b3401a" }}
                   disabled={busy === req.id}
                   onClick={async () => { setBusy(req.id); await onCancel(req.id); setBusy(null); }}
                 >
