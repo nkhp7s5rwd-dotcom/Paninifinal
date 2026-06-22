@@ -58,8 +58,11 @@ const DEFAULT_SECTIONS = [
   { name: "Panama (L)", count: 20 },
 ];
 
+const ACCESS_CODE = "panini2026"; // ← hier den Zugangscode festlegen
+const ACCESS_KEY = "tauschboerse_access";
+
 const STATUS_CYCLE = { missing: "have", have: "duplicate", duplicate: "missing" };
-const LOCAL_KEY = "yannes_tauschboerse_profile";
+const LOCAL_KEY = "tauschboerse_profile";
 
 function stickerKey(sectionName, number) {
   return `${sectionName}#${number}`;
@@ -68,6 +71,22 @@ function stickerKey(sectionName, number) {
 /* ===================== App ===================== */
 
 export default function App() {
+  const [accessGranted, setAccessGranted] = useState(
+    () => localStorage.getItem(ACCESS_KEY) === "1"
+  );
+  const [accessInput, setAccessInput] = useState("");
+  const [accessError, setAccessError] = useState("");
+
+  const handleAccessCode = (e) => {
+    e.preventDefault();
+    if (accessInput.trim() === ACCESS_CODE) {
+      localStorage.setItem(ACCESS_KEY, "1");
+      setAccessGranted(true);
+    } else {
+      setAccessError("Falscher Code. Bitte frag den Organisator.");
+    }
+  };
+
   const [profile, setProfile] = useState(undefined); // undefined=lädt, null=ausgeloggt
   const [users, setUsers] = useState([]); // [{id, name}]
   const [myStickers, setMyStickers] = useState(null); // { key: 'have' | 'duplicate' }
@@ -79,8 +98,33 @@ export default function App() {
   const [debugMessage, setDebugMessage] = useState(null);
 
   useEffect(() => {
-    document.title = "Yannes' Tauschbörse";
+    document.title = "Tauschbörse";
   }, []);
+
+  if (!accessGranted) {
+    return (
+      <div style={styles.loginWrap}>
+        <FontStyles />
+        <div style={styles.loginCard}>
+          <div style={styles.loginRibbon}>WM 2026</div>
+          <h1 style={styles.loginTitle}>Tauschbörse</h1>
+          <p style={styles.loginSub}>Diese Seite ist nur für eingeladene Sammler. Bitte gib den Zugangscode ein.</p>
+          <form onSubmit={handleAccessCode} style={{ width: "100%" }}>
+            <input
+              style={styles.loginInput}
+              placeholder="Zugangscode"
+              type="password"
+              value={accessInput}
+              onChange={(e) => setAccessInput(e.target.value)}
+              autoFocus
+            />
+            {accessError && <div style={styles.loginError}>{accessError}</div>}
+            <button type="submit" style={styles.loginButton}>Einloggen</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   // ---- beim Start: gespeichertes Profil aus localStorage lesen + Nutzerliste laden ----
   useEffect(() => {
@@ -231,7 +275,7 @@ export default function App() {
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>Yannes Tauschboerse</title>
+  <title>Tauschboerse</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; color: #1C2541; padding: 28px; font-size: 11px; }
@@ -251,7 +295,7 @@ export default function App() {
   </style>
 </head>
 <body>
-  <h1>Yannes' Tauschboerse</h1>
+  <h1>Tauschbörse</h1>
   <div class="subtitle">WM 2026 &middot; Sammler: ${profile.name} &middot; ${new Date().toLocaleDateString("de-DE")}</div>
 
   <h2>Fehlende Sticker <span class="badge badge-dark">${missing.reduce((s, r) => s + r.numbers.length, 0)}</span></h2>
@@ -266,7 +310,6 @@ export default function App() {
     : `<table><thead><tr><th>Abschnitt</th><th>Sticker-Nummern</th></tr></thead><tbody>${tableRows(duplicates)}</tbody></table>`
   }
 
-  <div class="footer">Yannes' Tauschboerse &middot; WM 2026 Panini Stickertracker</div>
   <script>window.onload = function() { window.print(); }<\/script>
 </body>
 </html>`;
@@ -371,7 +414,7 @@ function LoginScreen({ loginInput, setLoginInput, handleLogin, error, busy, user
       <FontStyles />
       <div style={styles.loginCard}>
         <div style={styles.loginRibbon}>WM 2026</div>
-        <h1 style={styles.loginTitle}>Yannes'<br />Tauschbörse</h1>
+        <h1 style={styles.loginTitle}>Tauschbörse</h1>
         <p style={styles.loginSub}>
           Trag dich mit deinem Namen ein und verwalte dein Panini-Heft.
           {userCount > 0 && <> Schon <b>{userCount}</b> Sammler dabei.</>}
@@ -391,8 +434,7 @@ function LoginScreen({ loginInput, setLoginInput, handleLogin, error, busy, user
           </button>
         </form>
         <div style={styles.loginNote}>
-          Jeder, der sich hier mit einem Namen einträgt, kann seine eigene Sammlung pflegen
-          – und sehen, was andere noch brauchen oder doppelt haben.
+          Trag deinen Namen ein und verwalte dein Panini-Heft.
         </div>
       </div>
     </div>
@@ -403,7 +445,7 @@ function Header({ profile, stats, onLogout }) {
   const pct = stats && stats.total ? Math.round((stats.have + stats.dup) / stats.total * 100) : 0;
   return (
     <header style={styles.header}>
-      <div style={styles.headerRibbon}>YANNES' TAUSCHBÖRSE · WM 2026</div>
+      <div style={styles.headerRibbon}>TAUSCHBÖRSE · WM 2026</div>
       <div style={styles.headerRow}>
         <div>
           <div style={styles.headerName}>{profile.name}</div>
