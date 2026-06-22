@@ -76,6 +76,7 @@ export default function App() {
   const [loginInput, setLoginInput] = useState("");
   const [loginError, setLoginError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [debugMessage, setDebugMessage] = useState(null);
 
   useEffect(() => {
     document.title = "Yannes' Tauschbörse";
@@ -167,33 +168,121 @@ export default function App() {
       else updated[key] = next;
       setMyStickers(updated); // optimistisches Update
 
-      if (next === "missing") {
-        const { error } = await supabase
-          .from("user_stickers")
-          .delete()
-          .eq("user_id", profile.id)
-          .eq("sticker_id", key);
-        if (error) {
-          console.error("Supabase delete error:", error);
-          alert("Fehler beim Löschen: " + error.message + (error.hint ? "\nHinweis: " + error.hint : "") + (error.details ? "\nDetails: " + error.details : ""));
-          setMyStickers(myStickers); // bei Fehler zurückrollen
+      try {
+        if (next === "missing") {
+          const { error } = await supabase
+            .from("user_stickers")
+            .delete()
+            .eq("user_id", profile.id)
+            .eq("sticker_id", key);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from("user_stickers")
+            .upsert(
+              { user_id: profile.id, sticker_id: key, status: next },
+              { onConflict: "user_id,sticker_id" }
+            );
+          if (error) throw error;
         }
-      } else {
-        const { error } = await supabase
-          .from("user_stickers")
-          .upsert(
-            { user_id: profile.id, sticker_id: key, status: next },
-            { onConflict: "user_id,sticker_id" }
-          );
-        if (error) {
-          console.error("Supabase upsert error:", error);
-          alert("Fehler beim Speichern: " + error.message + (error.hint ? "\nHinweis: " + error.hint : "") + (error.details ? "\nDetails: " + error.details : ""));
-          setMyStickers(myStickers); // bei Fehler zurückrollen
-        }
+        setDebugMessage(null);
+      } catch (err) {
+        console.error("Speichern fehlgeschlagen:", err);
+        setDebugMessage(
+          (err && (err.message || err.error_description)) +
+            (err && err.hint ? " · Hinweis: " + err.hint : "") +
+            (err && err.details ? " · Details: " + err.details : "") +
+            (err && err.code ? " · Code: " + err.code : "")
+        );
+        setMyStickers(myStickers); // bei Fehler zurückrollen
       }
     },
     [myStickers, profile]
   );
+
+  // ---- PDF Export ----
+  const exportPDF = useCallback(() => {
+    if (!myStickers || !profile) return;
+
+    const missing = [];
+    const duplicates = [];
+
+    DEFAULT_SECTIONS.forEach((section) => {
+      const sectionMissing = [];
+      const sectionDuplicates = [];
+      for (let i = 1; i <= section.count; i++) {
+        const key = stickerKey(section.name, i);
+        const st = myStickers[key];
+        if (!st || st === "missing") sectionMissing.push(i);
+        else if (st === "duplicate") sectionDuplicates.push(i);
+      }
+      if (sectionMissing.length > 0) missing.push({ section: section.name, numbers: sectionMissing });
+      if (sectionDuplicates.length > 0) duplicates.push({ section: section.name, numbers: sectionDuplicates });
+    });
+
+    const tableRows = (rows) => rows.map((r) => `
+      <tr>
+        <td>${r.section}</td>
+        <td>${r.numbers.join(", ")}</td>
+      </tr>
+    `).join("");
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="de">
+      <head>
+        <meta charset="UTF-8">
+        <title>Yannes' Tauschbörse – ${profile.name}</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;700&display=swap');
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Manrope', sans-serif; color: #1C2541; padding: 28px; font-size: 11px; }
+          h1 { font-family: 'Anton', sans-serif; font-size: 22px; letter-spacing: 0.5px; margin-bottom: 2px; }
+          .subtitle { font-size: 11px; color: #665f45; margin-bottom: 20px; }
+          h2 { font-family: 'Anton', sans-serif; font-size: 14px; margin: 18px 0 6px; }
+          .badge-red { display: inline-block; background: #1C2541; color: white; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
+          .badge-amber { display: inline-block; background: #E2862F; color: white; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+          th { background: #1C2541; color: #D9A441; font-family: 'Anton', sans-serif; font-size: 11px; letter-spacing: 0.5px; padding: 6px 10px; text-align: left; }
+          td { padding: 5px 10px; border-bottom: 1px solid #e8dec4; vertical-align: top; }
+          tr:nth-child(even) td { background: #f9f5ec; }
+          .empty { color: #8a8265; font-style: italic; margin: 8px 0; }
+          .footer { margin-top: 24px; font-size: 9px; color: #aaa; border-top: 1px solid #e8dec4; padding-top: 8px; }
+        </style>
+      </head>
+      <body>
+        <h1>Yannes' Tauschbörse</h1>
+        <div class="subtitle">WM 2026 · Sammler: ${profile.name} · Erstellt am ${new Date().toLocaleDateString("de-DE")}</div>
+
+        <h2>Fehlende Sticker <span class="badge-red">${missing.reduce((s, r) => s + r.numbers.length, 0)}</span></h2>
+        ${missing.length === 0
+          ? '<div class="empty">Keine fehlenden Sticker – Sammlung vollständig!</div>'
+          : `<table>
+              <thead><tr><th>Abschnitt</th><th>Sticker-Nummern</th></tr></thead>
+              <tbody>${tableRows(missing)}</tbody>
+            </table>`
+        }
+
+        <h2>Doppelte Sticker <span class="badge-amber">${duplicates.reduce((s, r) => s + r.numbers.length, 0)}</span></h2>
+        ${duplicates.length === 0
+          ? '<div class="empty">Keine doppelten Sticker.</div>'
+          : `<table>
+              <thead><tr><th>Abschnitt</th><th>Sticker-Nummern</th></tr></thead>
+              <tbody>${tableRows(duplicates)}</tbody>
+            </table>`
+        }
+
+        <div class="footer">Yannes' Tauschbörse · WM 2026 Panini Stickertracker</div>
+      </body>
+      </html>
+    `;
+
+    const win = window.open("", "_blank");
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 600);
+  }, [myStickers, profile]);
 
   const myStats = useMemo(() => {
     if (!myStickers) return null;
@@ -224,11 +313,18 @@ export default function App() {
   return (
     <div style={styles.app}>
       <FontStyles />
+      {debugMessage && (
+        <div style={styles.debugBanner}>
+          ⚠️ Speichern fehlgeschlagen: {debugMessage}
+          <button style={styles.debugClose} onClick={() => setDebugMessage(null)}>✕</button>
+        </div>
+      )}
       <Header profile={profile} stats={myStats} onLogout={handleLogout} />
       <nav style={styles.tabs}>
         <TabButton active={tab === "sammlung"} onClick={() => setTab("sammlung")}>Meine Sammlung</TabButton>
         <TabButton active={tab === "sammler"} onClick={() => setTab("sammler")}>Andere Sammler</TabButton>
         <TabButton active={tab === "tausch"} onClick={() => setTab("tausch")}>Tauschbörse</TabButton>
+        <button onClick={exportPDF} style={styles.pdfButton} title="Als PDF exportieren">📄 PDF</button>
       </nav>
 
       <main style={styles.main}>
@@ -586,6 +682,7 @@ const styles = {
   tabs: { display: "flex", gap: 6, padding: "14px 18px 0", background: COLORS.paper },
   tabButton: { flex: 1, padding: "10px 8px", borderRadius: "10px 10px 0 0", border: "none", background: COLORS.paperDark, color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: 0.7 },
   tabButtonActive: { background: COLORS.white, opacity: 1, boxShadow: "0 -2px 0 0 " + COLORS.gold + " inset" },
+  pdfButton: { padding: "10px 10px", borderRadius: "10px 10px 0 0", border: "none", background: COLORS.ink, color: COLORS.gold, fontWeight: 700, fontSize: 12, cursor: "pointer" },
   main: { padding: "16px 14px 0", maxWidth: 720, margin: "0 auto" },
   footer: { textAlign: "center", fontSize: 11.5, color: "#8a8265", padding: "26px 24px 0" },
   countryList: { display: "flex", flexDirection: "column", gap: 10 },
@@ -622,4 +719,6 @@ const styles = {
   loginError: { color: "#b3401a", fontSize: 12.5, marginBottom: 8 },
   loginButton: { width: "100%", padding: "13px 14px", borderRadius: 10, border: "none", background: COLORS.ink, color: COLORS.gold, fontFamily: "'Anton', sans-serif", fontSize: 15, letterSpacing: 0.5, cursor: "pointer" },
   loginNote: { fontSize: 11.5, color: "#7a7456", marginTop: 16, textAlign: "center", lineHeight: 1.5 },
+  debugBanner: { background: "#B3401A", color: "white", fontSize: 12.5, padding: "10px 38px 10px 14px", position: "relative", lineHeight: 1.4 },
+  debugClose: { position: "absolute", top: 6, right: 10, background: "transparent", border: "none", color: "white", fontSize: 16, cursor: "pointer" },
 };
