@@ -183,11 +183,13 @@ export default function App() {
   }, [profile]);
 
   const loadRequests = async (userId) => {
+    // Eingehend: pending UND accepted (damit man abschließen kann)
     const { data: incoming } = await supabase
       .from("trade_requests")
       .select("id, from_user_id, sticker_id, status, created_at")
       .eq("to_user_id", userId)
-      .eq("status", "pending");
+      .in("status", ["pending", "accepted"])
+      .order("created_at", { ascending: false });
     setIncomingRequests(incoming || []);
 
     const { data: sent } = await supabase
@@ -256,36 +258,40 @@ export default function App() {
     await loadRequests(profile.id);
   };
 
-  // ---- Anfrage annehmen ----
+  // ---- Anfrage annehmen (Schritt 1: nur Status ändern, Sticker noch nicht) ----
   const acceptRequest = async (req) => {
-    // 1. Sticker beim Besitzer: duplicate → have
-    await supabase.from("user_stickers")
-      .upsert({ user_id: req.from_user_id, sticker_id: req.sticker_id, status: "have" }, { onConflict: "user_id,sticker_id" });
-    // Warte: eigentlich ist der Empfänger (to_user_id = profile.id) derjenige, der annimmt
-    // Der Sender (from_user_id) hat den Sticker angefragt – der Besitzer (to_user_id = ich) gibt ab
-    // Mein Sticker: duplicate → have (ich gebe einen weg, habe noch einen)
-    await supabase.from("user_stickers")
-      .upsert({ user_id: profile.id, sticker_id: req.sticker_id, status: "have" }, { onConflict: "user_id,sticker_id" });
-    // 2. Sticker beim Anfragenden: → have
-    await supabase.from("user_stickers")
-      .upsert({ user_id: req.from_user_id, sticker_id: req.sticker_id, status: "have" }, { onConflict: "user_id,sticker_id" });
-    // 3. Anfrage als akzeptiert markieren
+    // Anfrage als akzeptiert markieren
     await supabase.from("trade_requests").update({ status: "accepted" }).eq("id", req.id);
-    // 4. Andere pending-Anfragen für denselben Sticker ablehnen
+    // Andere pending-Anfragen für denselben Sticker ablehnen
     await supabase.from("trade_requests")
       .update({ status: "declined" })
       .eq("to_user_id", profile.id)
       .eq("sticker_id", req.sticker_id)
       .eq("status", "pending")
       .neq("id", req.id);
-    // 5. Lokal aktualisieren
-    const updatedStickers = { ...myStickers, [req.sticker_id]: "have" };
-    setMyStickers(updatedStickers);
     await loadRequests(profile.id);
   };
 
-  // ---- Anfrage ablehnen ----
-  const declineRequest = async (reqId) => {
+  // ---- Tausch abschließen (Schritt 2: Sticker wirklich aktualisieren) ----
+  const completeRequest = async (req) => {
+    // Mein Sticker: duplicate → have (ich gebe einen ab, habe noch einen)
+    await supabase.from("user_stickers")
+      .upsert({ user_id: profile.id, sticker_id: req.sticker_id, status: "have" }, { onConflict: "user_id,sticker_id" });
+    // Sticker beim Anfragenden: → have
+    await supabase.from("user_stickers")
+      .upsert({ user_id: req.from_user_id, sticker_id: req.sticker_id, status: "have" }, { onConflict: "user_id,sticker_id" });
+    // Anfrage als abgeschlossen markieren
+    await supabase.from("trade_requests").update({ status: "completed" }).eq("id", req.id);
+    // Lokal aktualisieren
+    setMyStickers((prev) => ({ ...prev, [req.sticker_id]: "have" }));
+    await loadRequests(profile.id);
+  };
+
+  // ---- Anfrage abbrechen (vom Sender) ----
+  const cancelRequest = async (reqId) => {
+    await supabase.from("trade_requests").update({ status: "cancelled" }).eq("id", reqId);
+    await loadRequests(profile.id);
+  };
     await supabase.from("trade_requests").update({ status: "declined" }).eq("id", reqId);
     await loadRequests(profile.id);
   };
@@ -434,7 +440,9 @@ ${duplicates.length===0?'<div class="empty">Keine.</div>':`<table><thead><tr><th
               sentRequests={sentRequests}
               users={users}
               onAccept={acceptRequest}
+              onComplete={completeRequest}
               onDecline={declineRequest}
+              onCancel={cancelRequest}
               onRefresh={() => loadRequests(profile.id)}
             />
           )}
@@ -650,32 +658,40 @@ function TradeView({ profile, myStickers, users, sentRequests, onSendRequest }) 
   );
 }
 
-/* ===================== Anfragen-Inbox ===================== */
-function AnfragenView({ profile, incomingRequests, sentRequests, users, onAccept, onDecline, onRefresh }) {
+function AnfragenView({ profile, incomingRequests, sentRequests, users, onAccept, onComplete, onDecline, onCancel, onRefresh }) {
   const { dark } = useTheme();
   const s = makeStyles(dark);
   const [busy, setBusy] = useState(null);
   const nameOf = useCallback((id) => users.find((u) => u.id === id)?.name || "?", [users]);
 
-  const statusLabel = (st) => st === "pending" ? "⏳ Ausstehend" : st === "accepted" ? "✅ Angenommen" : "❌ Abgelehnt";
-  const statusColor = (st) => st === "accepted" ? "#2E7D5B" : st === "declined" ? "#b3401a" : "#7a6fa0";
+  const pending = incomingRequests.filter((r) => r.status === "pending");
+  const accepted = incomingRequests.filter((r) => r.status === "accepted");
+
+  const statusLabel = (st) => ({
+    pending: "⏳ Ausstehend", accepted: "✓ Angenommen",
+    completed: "✅ Abgeschlossen", declined: "❌ Abgelehnt", cancelled: "🚫 Abgebrochen"
+  }[st] || st);
+  const statusColor = (st) => ({
+    accepted: "#2E7D5B", completed: "#2E7D5B", declined: "#b3401a", cancelled: "#666", pending: "#7a6fa0"
+  }[st] || "#7a6fa0");
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <h2 style={{ ...s.sectionTitle, margin: "10px 0 8px" }}>Eingehende Anfragen</h2>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
         <button onClick={onRefresh} style={{ ...s.requestBtnSent, cursor: "pointer" }}>🔄 Aktualisieren</button>
       </div>
 
-      {incomingRequests.length === 0
+      {/* ---- Offene Anfragen ---- */}
+      <h2 style={{ ...s.sectionTitle, margin: "0 0 8px" }}>Offene Anfragen</h2>
+      {pending.length === 0
         ? <div style={s.emptyState}>Keine offenen Anfragen.</div>
-        : incomingRequests.map((req) => (
+        : pending.map((req) => (
           <div key={req.id} style={s.inboxCard}>
             <div style={s.inboxSticker}>{stickerLabel(req.sticker_id)}</div>
             <div style={s.inboxFrom}><b>{nameOf(req.from_user_id)}</b> möchte diesen Sticker von dir</div>
             <div style={s.inboxActions}>
               <button style={s.acceptBtn} disabled={busy === req.id} onClick={async () => { setBusy(req.id); await onAccept(req); setBusy(null); }}>
-                {busy === req.id ? "…" : "✓ Annehmen"}
+                {busy === req.id ? "…" : "Annehmen"}
               </button>
               <button style={s.declineBtn} disabled={busy === req.id} onClick={async () => { setBusy(req.id); await onDecline(req.id); setBusy(null); }}>
                 Ablehnen
@@ -684,7 +700,104 @@ function AnfragenView({ profile, incomingRequests, sentRequests, users, onAccept
           </div>
         ))}
 
-      <h2 style={{ ...s.sectionTitle, marginTop: 24 }}>Gesendete Anfragen</h2>
+      {/* ---- Angenommen ---- */}
+      <h2 style={{ ...s.sectionTitle, marginTop: 24, marginBottom: 8 }}>Angenommen – noch nicht abgeschlossen</h2>
+      {accepted.length === 0
+        ? <div style={s.emptyState}>Keine angenommenen Anfragen offen.</div>
+        : accepted.map((req) => (
+          <div key={req.id} style={{ ...s.inboxCard, borderLeft: `4px solid #2E7D5B` }}>
+            <div style={s.inboxSticker}>{stickerLabel(req.sticker_id)}</div>
+            <div style={s.inboxFrom}><b>{nameOf(req.from_user_id)}</b> – Tausch wurde vereinbart</div>
+            <div style={s.inboxActions}>
+              <button style={{ ...s.acceptBtn, background: "#1C2541" }} disabled={busy === req.id}
+                onClick={async () => { setBusy(req.id); await onComplete(req); setBusy(null); }}>
+                {busy === req.id ? "…" : "✓ Abschließen"}
+              </button>
+            </div>
+          </div>
+        ))}
+
+      {/* ---- Gesendete Anfragen ---- */}
+      <h2 style={{ ...s.sectionTitle, marginTop: 24, marginBottom: 8 }}>Gesendete Anfragen</h2>
+      {sentRequests.length === 0
+        ? <div style={s.emptyState}>Du hast noch keine Anfragen gesendet.</div>
+        : <ul style={s.tradeList}>{sentRequests.map((req) => (
+            <li key={req.id} style={{ ...s.sentCard, flexWrap: "wrap", gap: 8 }}>
+              <span style={{ ...s.tradeBadgePending, background: statusColor(req.status) }}>{statusLabel(req.status)}</span>
+              <span style={{ flex: 1 }}><b>{stickerLabel(req.sticker_id)}</b> → <b>{nameOf(req.to_user_id)}</b></span>
+              {req.status === "pending" && (
+                <button
+                  style={{ ...s.declineBtn, padding: "3px 10px", fontSize: 11.5, cursor: "pointer" }}
+                  disabled={busy === req.id}
+                  onClick={async () => { setBusy(req.id); await onCancel(req.id); setBusy(null); }}
+                >
+                  {busy === req.id ? "…" : "Abbrechen"}
+                </button>
+              )}
+            </li>
+          ))}</ul>}
+    </div>
+  );
+}
+  const { dark } = useTheme();
+  const s = makeStyles(dark);
+  const [busy, setBusy] = useState(null);
+  const nameOf = useCallback((id) => users.find((u) => u.id === id)?.name || "?", [users]);
+
+  const pending = incomingRequests.filter((r) => r.status === "pending");
+  const accepted = incomingRequests.filter((r) => r.status === "accepted");
+
+  const statusLabel = (st) => st === "pending" ? "⏳ Ausstehend" : st === "accepted" ? "✓ Angenommen" : st === "completed" ? "✅ Abgeschlossen" : "❌ Abgelehnt";
+  const statusColor = (st) => st === "accepted" ? "#2E7D5B" : st === "completed" ? "#2E7D5B" : st === "declined" ? "#b3401a" : "#7a6fa0";
+
+  return (
+    <div>
+      {/* ---- Refresh ---- */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <button onClick={onRefresh} style={{ ...s.requestBtnSent, cursor: "pointer" }}>🔄 Aktualisieren</button>
+      </div>
+
+      {/* ---- Offene Anfragen ---- */}
+      <h2 style={{ ...s.sectionTitle, margin: "0 0 8px" }}>Offene Anfragen</h2>
+      {pending.length === 0
+        ? <div style={s.emptyState}>Keine offenen Anfragen.</div>
+        : pending.map((req) => (
+          <div key={req.id} style={s.inboxCard}>
+            <div style={s.inboxSticker}>{stickerLabel(req.sticker_id)}</div>
+            <div style={s.inboxFrom}><b>{nameOf(req.from_user_id)}</b> möchte diesen Sticker von dir</div>
+            <div style={s.inboxActions}>
+              <button style={s.acceptBtn} disabled={busy === req.id} onClick={async () => { setBusy(req.id); await onAccept(req); setBusy(null); }}>
+                {busy === req.id ? "…" : "Annehmen"}
+              </button>
+              <button style={s.declineBtn} disabled={busy === req.id} onClick={async () => { setBusy(req.id); await onDecline(req.id); setBusy(null); }}>
+                Ablehnen
+              </button>
+            </div>
+          </div>
+        ))}
+
+      {/* ---- Angenommen – warten auf Abschluss ---- */}
+      <h2 style={{ ...s.sectionTitle, marginTop: 24, marginBottom: 8 }}>Angenommen – noch nicht abgeschlossen</h2>
+      {accepted.length === 0
+        ? <div style={s.emptyState}>Keine angenommenen Anfragen offen.</div>
+        : accepted.map((req) => (
+          <div key={req.id} style={{ ...s.inboxCard, borderLeft: `4px solid #2E7D5B` }}>
+            <div style={s.inboxSticker}>{stickerLabel(req.sticker_id)}</div>
+            <div style={s.inboxFrom}><b>{nameOf(req.from_user_id)}</b> – Tausch wurde vereinbart</div>
+            <div style={s.inboxActions}>
+              <button
+                style={{ ...s.acceptBtn, background: "#1C2541" }}
+                disabled={busy === req.id}
+                onClick={async () => { setBusy(req.id); await onComplete(req); setBusy(null); }}
+              >
+                {busy === req.id ? "…" : "✓ Abschließen"}
+              </button>
+            </div>
+          </div>
+        ))}
+
+      {/* ---- Gesendete Anfragen ---- */}
+      <h2 style={{ ...s.sectionTitle, marginTop: 24, marginBottom: 8 }}>Gesendete Anfragen</h2>
       {sentRequests.length === 0
         ? <div style={s.emptyState}>Du hast noch keine Anfragen gesendet.</div>
         : <ul style={s.tradeList}>{sentRequests.map((req) => (
