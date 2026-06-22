@@ -248,7 +248,11 @@ export default function App() {
   // ---- Tauschanfrage senden ----
   const sendRequest = async (toUserId, stickerId) => {
     if (!profile) return;
-    await supabase.from("trade_requests").insert({ from_user_id: profile.id, to_user_id: toUserId, sticker_id: stickerId });
+    const { error } = await supabase.from("trade_requests").insert({ from_user_id: profile.id, to_user_id: toUserId, sticker_id: stickerId });
+    if (error) {
+      setDebugMessage("Anfrage fehlgeschlagen: " + error.message + (error.hint ? " · " + error.hint : "") + (error.code ? " · Code: " + error.code : ""));
+      return;
+    }
     await loadRequests(profile.id);
   };
 
