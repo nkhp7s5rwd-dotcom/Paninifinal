@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, useMemo, useCallback, createContext, useContext, useRef } from "react";
 import { supabase } from "./supabaseClient";
 
 /* ===================== Dark Mode Context ===================== */
@@ -155,9 +155,24 @@ export default function App() {
   const [incomingRequests, setIncomingRequests] = useState([]); // pending, an mich gerichtet
   const [sentRequests, setSentRequests] = useState([]);         // alle, die ich gesendet habe
 
-  const s = makeStyles(dark);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => { document.title = "Tauschbörse"; }, []);
+  const loadUnread = useCallback(async (userId) => {
+    const { count } = await supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("to_user_id", userId)
+      .eq("read", false);
+    setUnreadCount(count || 0);
+  }, []);
+
+  useEffect(() => {
+    if (!profile) return;
+    loadUnread(profile.id);
+    // Poll every 15 seconds for new messages
+    const interval = setInterval(() => loadUnread(profile.id), 15000);
+    return () => clearInterval(interval);
+  }, [profile, loadUnread]);
   useEffect(() => { document.body.style.background = dark ? "#0a0c12" : "#F3ECD9"; }, [dark]);
 
   useEffect(() => {
@@ -421,6 +436,7 @@ ${duplicates.length===0?'<div class="empty">Keine.</div>':`<table><thead><tr><th
           <TabBtn active={tab === "sammler"} onClick={() => setTab("sammler")}>Sammler</TabBtn>
           <TabBtn active={tab === "tausch"} onClick={() => setTab("tausch")}>Tauschbörse</TabBtn>
           <TabBtn active={tab === "anfragen"} onClick={() => setTab("anfragen")} badge={pendingCount}>Anfragen</TabBtn>
+          <TabBtn active={tab === "nachrichten"} onClick={() => { setTab("nachrichten"); setUnreadCount(0); }} badge={unreadCount}>💬</TabBtn>
           <button onClick={exportPDF} style={s.pdfButton}>📄 PDF</button>
         </nav>
 
@@ -454,6 +470,13 @@ ${duplicates.length===0?'<div class="empty">Keine.</div>':`<table><thead><tr><th
               onDecline={declineRequest}
               onCancel={cancelRequest}
               onRefresh={() => loadRequests(profile.id)}
+            />
+          )}
+          {tab === "nachrichten" && (
+            <NachrichtenView
+              profile={profile}
+              users={users.filter((u) => u.id !== profile.id)}
+              onNewMessage={() => loadUnread(profile.id)}
             />
           )}
         </main>
@@ -766,6 +789,128 @@ function AnfragenView({ profile, incomingRequests, sentRequests, users, onAccept
               )}
             </li>
           ))}</ul>}
+    </div>
+  );
+}
+
+/* ===================== Nachrichten ===================== */
+function NachrichtenView({ profile, users, onNewMessage }) {
+  const { dark } = useTheme();
+  const s = makeStyles(dark);
+  const c = C(dark);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+
+  const nameOf = useCallback((id) => {
+    if (id === profile.id) return "Du";
+    return users.find((u) => u.id === id)?.name || "?";
+  }, [users, profile]);
+
+  const loadMessages = useCallback(async (userId) => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("messages")
+      .select("id, from_user_id, to_user_id, content, read, created_at")
+      .or(`and(from_user_id.eq.${profile.id},to_user_id.eq.${userId}),and(from_user_id.eq.${userId},to_user_id.eq.${profile.id})`)
+      .order("created_at", { ascending: true });
+    setMessages(data || []);
+    setLoading(false);
+    // Mark incoming as read
+    await supabase.from("messages").update({ read: true })
+      .eq("from_user_id", userId).eq("to_user_id", profile.id).eq("read", false);
+    onNewMessage();
+  }, [profile, onNewMessage]);
+
+  useEffect(() => {
+    if (!selectedUserId) return;
+    loadMessages(selectedUserId);
+    const interval = setInterval(() => loadMessages(selectedUserId), 8000);
+    return () => clearInterval(interval);
+  }, [selectedUserId, loadMessages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const send = async () => {
+    if (!input.trim() || !selectedUserId) return;
+    setSending(true);
+    const content = input.trim();
+    setInput("");
+    const { data } = await supabase.from("messages")
+      .insert({ from_user_id: profile.id, to_user_id: selectedUserId, content })
+      .select().single();
+    if (data) setMessages((prev) => [...prev, data]);
+    setSending(false);
+  };
+
+  const msgStyles = {
+    wrap: { display: "flex", flexDirection: "column", height: 420 },
+    history: { flex: 1, overflowY: "auto", padding: "8px 0", display: "flex", flexDirection: "column", gap: 6 },
+    bubble: (mine) => ({
+      maxWidth: "78%", padding: "8px 12px", borderRadius: mine ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+      background: mine ? c.ink : c.card, color: mine ? c.gold : c.ink,
+      alignSelf: mine ? "flex-end" : "flex-start",
+      fontSize: 13.5, lineHeight: 1.45,
+      boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+    }),
+    meta: (mine) => ({ fontSize: 10.5, color: c.noteText, textAlign: mine ? "right" : "left", marginBottom: 1, paddingInline: 4 }),
+    inputRow: { display: "flex", gap: 8, marginTop: 10 },
+    input: { flex: 1, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${c.border}`, background: c.card, color: c.ink, fontSize: 14 },
+    sendBtn: { padding: "10px 16px", borderRadius: 10, border: "none", background: c.ink, color: c.gold, fontWeight: 700, fontSize: 14, cursor: "pointer" },
+  };
+
+  if (users.length === 0) return <div style={s.emptyState}>Noch keine anderen Sammler, denen du schreiben könntest.</div>;
+
+  return (
+    <div>
+      <div style={s.selectRow}>
+        <label style={s.selectLabel}>Schreiben an:</label>
+        <select style={s.select} value={selectedUserId} onChange={(e) => { setSelectedUserId(e.target.value); setMessages([]); }}>
+          <option value="">– bitte wählen –</option>
+          {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+      </div>
+
+      {selectedUserId && (
+        <div style={{ ...s.countryCard, padding: "12px 14px" }}>
+          <div style={msgStyles.wrap}>
+            <div style={msgStyles.history}>
+              {loading && messages.length === 0 && <div style={s.note}>Lade Nachrichten …</div>}
+              {!loading && messages.length === 0 && <div style={s.emptyState}>Noch keine Nachrichten. Schreib etwas!</div>}
+              {messages.map((m) => {
+                const mine = m.from_user_id === profile.id;
+                const time = new Date(m.created_at).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+                return (
+                  <div key={m.id}>
+                    <div style={msgStyles.meta(mine)}>{nameOf(m.from_user_id)} · {time}</div>
+                    <div style={msgStyles.bubble(mine)}>{m.content}</div>
+                  </div>
+                );
+              })}
+              <div ref={bottomRef} />
+            </div>
+            <div style={msgStyles.inputRow}>
+              <input
+                style={msgStyles.input}
+                placeholder="Nachricht …"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
+                maxLength={500}
+                disabled={sending}
+              />
+              <button style={msgStyles.sendBtn} onClick={send} disabled={sending || !input.trim()}>
+                {sending ? "…" : "➤"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
