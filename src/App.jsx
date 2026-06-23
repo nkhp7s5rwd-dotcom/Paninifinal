@@ -425,7 +425,14 @@ ${duplicates.length===0?'<div class="empty">Keine.</div>':`<table><thead><tr><th
         </nav>
 
         <main style={s.main}>
-          {tab === "sammlung" && myStickers && <CollectionView data={myStickers} openSection={openSection} setOpenSection={setOpenSection} onToggle={toggleSticker} editable />}
+          {tab === "sammlung" && myStickers && <CollectionView
+            data={myStickers}
+            openSection={openSection}
+            setOpenSection={setOpenSection}
+            onToggle={toggleSticker}
+            editable
+            requestedKeys={new Set(sentRequests.filter(r => r.status === "pending" || r.status === "accepted").map(r => r.sticker_id))}
+          />}
           {tab === "sammler" && <OthersView users={users.filter((u) => u.id !== profile.id)} />}
           {tab === "tausch" && myStickers && (
             <TradeView
@@ -469,7 +476,7 @@ function TabBtn({ active, children, onClick, badge }) {
 }
 
 /* ===================== Collection ===================== */
-function CollectionView({ data, openSection, setOpenSection, onToggle, editable }) {
+function CollectionView({ data, openSection, setOpenSection, onToggle, editable, requestedKeys = new Set() }) {
   const { dark } = useTheme();
   const s = makeStyles(dark);
   return (
@@ -492,8 +499,10 @@ function CollectionView({ data, openSection, setOpenSection, onToggle, editable 
             {isOpen && (
               <div style={s.stickerGrid}>
                 {Array.from({ length: section.count }, (_, i) => i + 1).map((n) => {
-                  const st = data[stickerKey(section.name, n)] || "missing";
-                  return <StickerCell key={n} number={n} status={st} onClick={editable ? () => onToggle(section.name, n - 1) : undefined} />;
+                  const key = stickerKey(section.name, n);
+                  const st = data[key] || "missing";
+                  const requested = requestedKeys.has(key);
+                  return <StickerCell key={n} number={n} status={st} requested={requested} onClick={editable ? () => onToggle(section.name, n - 1) : undefined} />;
                 })}
               </div>
             )}
@@ -504,15 +513,23 @@ function CollectionView({ data, openSection, setOpenSection, onToggle, editable 
   );
 }
 
-function StickerCell({ number, status, onClick }) {
+function StickerCell({ number, status, requested, onClick }) {
   const { dark } = useTheme();
   const s = makeStyles(dark);
   const styleMap = { missing: s.stickerMissing, have: s.stickerHave, duplicate: s.stickerDuplicate };
+  const requestedStyle = {
+    background: dark ? "#0d2a4a" : "#dbeafe",
+    borderStyle: "solid",
+    borderColor: "#3b82f6",
+    color: "#3b82f6",
+  };
   return (
-    <button onClick={onClick} disabled={!onClick} style={{ ...s.sticker, ...styleMap[status], cursor: onClick ? "pointer" : "default" }}>
+    <button onClick={onClick} disabled={!onClick}
+      style={{ ...s.sticker, ...styleMap[status], ...(requested ? requestedStyle : {}), cursor: onClick ? "pointer" : "default" }}>
       <span style={s.stickerNumber}>{number}</span>
-      {status === "duplicate" && <span style={s.stickerBadge}>2×</span>}
-      {status === "have" && <span style={s.stickerCheck}>✓</span>}
+      {status === "duplicate" && !requested && <span style={s.stickerBadge}>2×</span>}
+      {status === "have" && !requested && <span style={s.stickerCheck}>✓</span>}
+      {requested && <span style={{ ...s.stickerBadge, background: "#3b82f6" }}>↗</span>}
     </button>
   );
 }
