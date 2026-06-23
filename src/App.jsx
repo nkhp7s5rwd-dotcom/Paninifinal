@@ -158,13 +158,15 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   const loadUnread = useCallback(async (userId) => {
+    const id = userId || profile?.id;
+    if (!id) return;
     const { count } = await supabase
       .from("messages")
       .select("id", { count: "exact", head: true })
-      .eq("to_user_id", userId)
+      .eq("to_user_id", id)
       .eq("read", false);
     setUnreadCount(count || 0);
-  }, []);
+  }, [profile?.id]);
 
   useEffect(() => {
     if (!profile) return;
@@ -476,7 +478,7 @@ ${duplicates.length===0?'<div class="empty">Keine.</div>':`<table><thead><tr><th
             <NachrichtenView
               profile={profile}
               users={users.filter((u) => u.id !== profile.id)}
-              onNewMessage={() => loadUnread(profile.id)}
+              onNewMessage={loadUnread}
             />
           )}
         </main>
@@ -808,9 +810,10 @@ function NachrichtenView({ profile, users, onNewMessage }) {
   const nameOf = useCallback((id) => {
     if (id === profile.id) return "Du";
     return users.find((u) => u.id === id)?.name || "?";
-  }, [users, profile]);
+  }, [users, profile.id]);
 
   const loadMessages = useCallback(async (userId) => {
+    if (!userId) return;
     setLoading(true);
     const { data } = await supabase
       .from("messages")
@@ -819,18 +822,17 @@ function NachrichtenView({ profile, users, onNewMessage }) {
       .order("created_at", { ascending: true });
     setMessages(data || []);
     setLoading(false);
-    // Mark incoming as read
     await supabase.from("messages").update({ read: true })
       .eq("from_user_id", userId).eq("to_user_id", profile.id).eq("read", false);
-    onNewMessage();
-  }, [profile, onNewMessage]);
+    onNewMessage(profile.id);
+  }, [profile.id, onNewMessage]);
 
   useEffect(() => {
     if (!selectedUserId) return;
     loadMessages(selectedUserId);
     const interval = setInterval(() => loadMessages(selectedUserId), 8000);
     return () => clearInterval(interval);
-  }, [selectedUserId, loadMessages]);
+  }, [selectedUserId]); // intentionally omit loadMessages to avoid re-subscribing
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
