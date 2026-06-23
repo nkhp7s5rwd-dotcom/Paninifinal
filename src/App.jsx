@@ -598,7 +598,14 @@ function TradeView({ profile, myStickers, users, sentRequests, onSendRequest }) 
     return reqs;
   }, [allRows, myDupKeys, selectedUserIds, nameOf]);
 
-  // Bereits gesendete pending-Anfragen als Set
+  // Bereits gesendete pending-Anfragen als Set (pro Sticker, egal an wen)
+  const alreadySentStickers = useMemo(() => {
+    const set = new Set();
+    sentRequests.filter((r) => r.status === "pending" || r.status === "accepted").forEach((r) => set.add(r.sticker_id));
+    return set;
+  }, [sentRequests]);
+
+  // Bereits gesendete pending-Anfragen als Set (pro Nutzer+Sticker)
   const alreadySent = useMemo(() => {
     const set = new Set();
     sentRequests.filter((r) => r.status === "pending").forEach((r) => set.add(`${r.to_user_id}::${r.sticker_id}`));
@@ -633,6 +640,7 @@ function TradeView({ profile, myStickers, users, sentRequests, onSendRequest }) 
           : <ul style={s.tradeList}>{offersForMe.map((o, i) => {
               const sentKey = `${o.userId}::${o.key}`;
               const isSent = alreadySent.has(sentKey);
+              const isBlockedGlobal = !isSent && alreadySentStickers.has(o.key);
               const isSending = sending === sentKey;
               return (
                 <li key={i} style={s.tradeItem}>
@@ -640,6 +648,8 @@ function TradeView({ profile, myStickers, users, sentRequests, onSendRequest }) 
                   <span style={{ flex: 1 }}><b>{stickerLabel(o.key)}</b> — <b>{o.user}</b></span>
                   {isSent
                     ? <span style={s.requestBtnSent}>✓ Angefragt</span>
+                    : isBlockedGlobal
+                    ? <span style={{ ...s.requestBtnSent, color: "#b3401a" }}>bereits angefragt</span>
                     : <button style={s.requestBtn} disabled={isSending} onClick={() => handleRequest(o.userId, o.key)}>
                         {isSending ? "…" : "Anfragen"}
                       </button>}
