@@ -580,9 +580,31 @@ function NachrichtenView({profile,users,onMarkRead}) {
   const [input,setInput]=useState("");
   const [loading,setLoading]=useState(false);
   const [sending,setSending]=useState(false);
+  const [conversations,setConversations]=useState([]); // [{userId, name, lastMsg, unread}]
+  const [convsLoading,setConvsLoading]=useState(true);
   const bottomRef=useRef(null);
 
   const nameOf=useCallback(id=>id===profile.id?"Du":users.find(u=>u.id===id)?.name||"?",[users,profile.id]);
+
+  // Lade Übersicht aller Gespräche
+  const loadConversations=useCallback(async()=>{
+    const {data}=await supabase.from("messages")
+      .select("id,from_user_id,to_user_id,content,read,created_at")
+      .or(`from_user_id.eq.${profile.id},to_user_id.eq.${profile.id}`)
+      .order("created_at",{ascending:false});
+    if(!data){setConvsLoading(false);return;}
+    // Gruppiere nach Gesprächspartner
+    const map={};
+    data.forEach(m=>{
+      const otherId=m.from_user_id===profile.id?m.to_user_id:m.from_user_id;
+      if(!map[otherId]){map[otherId]={userId:otherId,lastMsg:m.content,lastTime:m.created_at,unread:0};}
+      if(m.to_user_id===profile.id&&!m.read)map[otherId].unread++;
+    });
+    setConversations(Object.values(map).sort((a,b)=>new Date(b.lastTime)-new Date(a.lastTime)));
+    setConvsLoading(false);
+  },[profile.id]);
+
+  useEffect(()=>{loadConversations();},[loadConversations]);
 
   const loadMsgs=useCallback(async(uid)=>{
     if(!uid)return;
@@ -593,7 +615,8 @@ function NachrichtenView({profile,users,onMarkRead}) {
     setMessages(data||[]);setLoading(false);
     await supabase.from("messages").update({read:true}).eq("from_user_id",uid).eq("to_user_id",profile.id).eq("read",false);
     onMarkRead();
-  },[profile.id,onMarkRead]);
+    loadConversations();
+  },[profile.id,onMarkRead,loadConversations]);
 
   const selectedRef=useRef(selectedUserId);
   useEffect(()=>{selectedRef.current=selectedUserId;},[selectedUserId]);
@@ -602,7 +625,7 @@ function NachrichtenView({profile,users,onMarkRead}) {
     if(!selectedUserId)return;
     setLoading(true);setMessages([]);
     loadMsgs(selectedUserId);
-    const iv=setInterval(()=>{ if(selectedRef.current)loadMsgs(selectedRef.current); },8000);
+    const iv=setInterval(()=>{if(selectedRef.current){loadMsgs(selectedRef.current);loadConversations();}},8000);
     return()=>clearInterval(iv);
   },[selectedUserId]); // eslint-disable-line
 
@@ -614,40 +637,85 @@ function NachrichtenView({profile,users,onMarkRead}) {
     const {data}=await supabase.from("messages").insert({from_user_id:profile.id,to_user_id:selectedUserId,content}).select().single();
     if(data)setMessages(prev=>[...prev,data]);
     setSending(false);
+    loadConversations();
   };
 
+  const openChat=(uid)=>{setSelectedUserId(uid);setMessages([]);};
+
   if(users.length===0) return <div style={s.emptyState}>Noch keine anderen Sammler.</div>;
-  return (
-    <div>
-      <div style={s.selectRow}>
-        <label style={s.selectLabel}>Schreiben an:</label>
-        <select style={s.select} value={selectedUserId} onChange={e=>{setSelectedUserId(e.target.value);setMessages([]);}}>
-          <option value="">– bitte wählen –</option>
-          {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
-      </div>
-      {selectedUserId&&<div style={{...s.countryCard,padding:"12px 14px"}}>
-        <div style={{display:"flex",flexDirection:"column",height:420}}>
-          <div style={s.msgHistory}>
-            {loading&&<div style={s.note}>Lade …</div>}
-            {!loading&&messages.length===0&&<div style={s.emptyState}>Noch keine Nachrichten.</div>}
-            {messages.map(m=>{
-              const mine=m.from_user_id===profile.id;
-              const time=new Date(m.created_at).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
-              return <div key={m.id}>
-                <div style={{fontSize:10.5,color:c.noteText,textAlign:mine?"right":"left",marginBottom:1,paddingInline:4}}>{nameOf(m.from_user_id)} · {time}</div>
-                <div style={{maxWidth:"78%",padding:"8px 12px",borderRadius:mine?"14px 14px 4px 14px":"14px 14px 14px 4px",background:mine?c.ink:c.card,color:mine?c.gold:c.ink,alignSelf:mine?"flex-end":"flex-start",fontSize:13.5,lineHeight:1.45,display:"inline-block",float:mine?"right":"left",clear:"both"}}>{m.content}</div>
-                <div style={{clear:"both"}}/>
-              </div>;
-            })}
-            <div ref={bottomRef}/>
-          </div>
-          <div style={s.msgInputRow}>
-            <input style={s.msgInput} placeholder="Nachricht …" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()} maxLength={500} disabled={sending}/>
-            <button style={s.msgSendBtn} onClick={send} disabled={sending||!input.trim()}>{sending?"…":"➤"}</button>
+
+  // Chat-Ansicht
+  if(selectedUserId){
+    const partnerName=nameOf(selectedUserId);
+    return (
+      <div>
+        <button onClick={()=>setSelectedUserId("")} style={{...s.declineBtn,marginBottom:12,padding:"7px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontSize:13}}>
+          ← {partnerName}
+        </button>
+        <div style={{...s.countryCard,padding:"12px 14px"}}>
+          <div style={{display:"flex",flexDirection:"column",height:420}}>
+            <div style={s.msgHistory}>
+              {loading&&<div style={s.note}>Lade …</div>}
+              {!loading&&messages.length===0&&<div style={s.emptyState}>Noch keine Nachrichten.</div>}
+              {messages.map(m=>{
+                const mine=m.from_user_id===profile.id;
+                const time=new Date(m.created_at).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
+                return <div key={m.id}>
+                  <div style={{fontSize:10.5,color:c.noteText,textAlign:mine?"right":"left",marginBottom:1,paddingInline:4}}>{nameOf(m.from_user_id)} · {time}</div>
+                  <div style={{maxWidth:"78%",padding:"8px 12px",borderRadius:mine?"14px 14px 4px 14px":"14px 14px 14px 4px",background:mine?c.ink:c.card,color:mine?c.gold:c.ink,alignSelf:mine?"flex-end":"flex-start",fontSize:13.5,lineHeight:1.45,display:"inline-block",float:mine?"right":"left",clear:"both"}}>{m.content}</div>
+                  <div style={{clear:"both"}}/>
+                </div>;
+              })}
+              <div ref={bottomRef}/>
+            </div>
+            <div style={s.msgInputRow}>
+              <input style={s.msgInput} placeholder="Nachricht …" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()} maxLength={500} disabled={sending}/>
+              <button style={s.msgSendBtn} onClick={send} disabled={sending||!input.trim()}>{sending?"…":"➤"}</button>
+            </div>
           </div>
         </div>
-      </div>}
+      </div>
+    );
+  }
+
+  // Übersicht
+  return (
+    <div>
+      <h2 style={{...s.sectionTitle,margin:"0 0 12px"}}>Nachrichten</h2>
+
+      {/* Neues Gespräch starten */}
+      <div style={{...s.countryCard,padding:"12px 14px",marginBottom:12}}>
+        <div style={{fontSize:12.5,fontWeight:700,marginBottom:8,color:c.inkLight}}>Neues Gespräch</div>
+        <div style={s.userPickerGrid}>
+          {users.map(u=><button key={u.id} onClick={()=>openChat(u.id)} style={{...s.userChip,fontSize:12}}>{u.name}</button>)}
+        </div>
+      </div>
+
+      {/* Gesprächsliste */}
+      {convsLoading?<div style={s.note}>Lade …</div>:
+       conversations.length===0?<div style={s.emptyState}>Noch keine Gespräche.</div>:
+       <ul style={{...s.tradeList}}>
+        {conversations.map(conv=>{
+          const name=nameOf(conv.userId);
+          const time=new Date(conv.lastTime).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
+          return (
+            <li key={conv.userId} onClick={()=>openChat(conv.userId)}
+              style={{...s.countryCard,padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{width:40,height:40,borderRadius:999,background:c.ink,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Anton',sans-serif",fontSize:16,color:c.gold,flexShrink:0}}>
+                {name[0].toUpperCase()}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:800,fontSize:14,color:c.ink,display:"flex",justifyContent:"space-between"}}>
+                  <span>{name}</span>
+                  <span style={{fontSize:11,color:c.noteText,fontWeight:400}}>{time}</span>
+                </div>
+                <div style={{fontSize:12.5,color:c.inkLight,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{conv.lastMsg}</div>
+              </div>
+              {conv.unread>0&&<span style={{background:"#3b82f6",color:"white",fontSize:11,fontWeight:900,borderRadius:999,padding:"2px 8px",flexShrink:0}}>{conv.unread}</span>}
+            </li>
+          );
+        })}
+       </ul>}
     </div>
   );
 }
