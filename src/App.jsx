@@ -101,7 +101,7 @@ function buildStyles(c, dark) {
 }
 
 const DEFAULT_SECTIONS = [
-  {name:"FWC – Sondersticker",count:19},
+  {name:"FWC – Sondersticker",count:20,startAt:0},
   {name:"Mexiko (A)",count:20},{name:"Südafrika (A)",count:20},{name:"Südkorea (A)",count:20},{name:"Tschechien (A)",count:20},
   {name:"Kanada (B)",count:20},{name:"Bosnien-Herzegowina (B)",count:20},{name:"Katar (B)",count:20},{name:"Schweiz (B)",count:20},
   {name:"Brasilien (C)",count:20},{name:"Haiti (C)",count:20},{name:"Marokko (C)",count:20},{name:"Schottland (C)",count:20},
@@ -272,8 +272,14 @@ export default function App() {
     if (!myStickers||!profile) return;
     const miss=[],dups=[];
     DEFAULT_SECTIONS.forEach(sec => {
+      const start=sec.startAt??1;
       const sm=[],sd=[];
-      for(let i=1;i<=sec.count;i++){const st=myStickers[stickerKey(sec.name,i)];if(!st||st==="missing")sm.push(i);else if(st==="duplicate")sd.push(i);}
+      for(let i=0;i<sec.count;i++){
+        const n=start+i;
+        const st=myStickers[stickerKey(sec.name,n)];
+        const label=sec.startAt===0?String(n).padStart(2,"0"):n;
+        if(!st||st==="missing")sm.push(label);else if(st==="duplicate")sd.push(label);
+      }
       if(sm.length)miss.push({section:sec.name,numbers:sm});
       if(sd.length)dups.push({section:sec.name,numbers:sd});
     });
@@ -405,10 +411,12 @@ function CollectionView({data,openSection,setOpenSection,onToggle,editable,reque
     <div style={s.countryList}>
       {DEFAULT_SECTIONS.map(sec=>{
         let have=0,dup=0;
-        for(let i=1;i<=sec.count;i++){const st=data[stickerKey(sec.name,i)];if(st==="have")have++;else if(st==="duplicate")dup++;}
+        const start=sec.startAt??1;
+        for(let i=0;i<sec.count;i++){const st=data[stickerKey(sec.name,start+i)];if(st==="have")have++;else if(st==="duplicate")dup++;}
         const complete=have+dup===sec.count;
         const isOpen=openSection===sec.name;
-        return (
+        const start=sec.startAt??1;
+          return (
           <div key={sec.name} style={s.countryCard}>
             <button style={{...s.countryHeader,...(complete?s.countryHeaderComplete:{})}} onClick={()=>setOpenSection(isOpen?null:sec.name)}>
               <span style={s.countryName}>{sec.name}</span>
@@ -416,11 +424,12 @@ function CollectionView({data,openSection,setOpenSection,onToggle,editable,reque
               <span style={s.chevron}>{isOpen?"▲":"▼"}</span>
             </button>
             {isOpen&&<div style={s.stickerGrid}>
-              {Array.from({length:sec.count},(_,i)=>i+1).map(n=>{
+              {Array.from({length:sec.count},(_,i)=>start+i).map(n=>{
                 const key=stickerKey(sec.name,n);
                 const st=data[key]||"missing";
                 const req=requestedKeys.has(key);
-                return <StickerCell key={n} number={n} status={st} requested={req} onClick={editable?()=>onToggle(sec.name,n-1):undefined}/>;
+                const label=sec.startAt===0?String(n).padStart(2,"0"):n;
+                return <StickerCell key={n} number={label} status={st} requested={req} onClick={editable?()=>onToggle(sec.name,n):undefined}/>;
               })}
             </div>}
           </div>
@@ -491,7 +500,10 @@ function TradeView({profile,myStickers,users,sentRequests,onSendRequest}) {
 
   const myMissing=useMemo(()=>{
     const set=new Set();
-    DEFAULT_SECTIONS.forEach(sec=>{for(let i=1;i<=sec.count;i++){if(!myStickers[stickerKey(sec.name,i)])set.add(stickerKey(sec.name,i));}});
+    DEFAULT_SECTIONS.forEach(sec=>{
+      const start=sec.startAt??1;
+      for(let i=0;i<sec.count;i++){if(!myStickers[stickerKey(sec.name,start+i)])set.add(stickerKey(sec.name,start+i));}
+    });
     return set;
   },[myStickers]);
   const myDups=useMemo(()=>Object.entries(myStickers).filter(([,st])=>st==="duplicate").map(([k])=>k),[myStickers]);
