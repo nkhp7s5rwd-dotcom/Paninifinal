@@ -217,7 +217,7 @@ export default function App() {
 
   const toggleSticker = useCallback(async (secName, idx) => {
     if (!myStickers||!profile) return;
-    const key = stickerKey(secName, idx+1);
+    const key = stickerKey(secName, idx);
     const next = STATUS_CYCLE[myStickers[key]||"missing"];
     const updated = {...myStickers};
     if (next==="missing") delete updated[key]; else updated[key]=next;
@@ -568,6 +568,7 @@ function AnfragenView({incomingRequests,sentRequests,users,onAccept,onComplete,o
           <div style={s.inboxFrom}><b>{nameOf(req.from_user_id)}</b> – Tausch vereinbart</div>
           <div style={s.inboxActions}>
             <button style={{...s.acceptBtn,background:"#1C2541"}} disabled={busy===req.id} onClick={async()=>{setBusy(req.id);await onComplete(req);setBusy(null);}}>{busy===req.id?"…":"✓ Abschließen"}</button>
+            <button style={s.declineBtn} disabled={busy===req.id} onClick={async()=>{setBusy(req.id);await onDecline(req.id);setBusy(null);}}>Abbrechen</button>
           </div>
         </div>
       ))}
@@ -576,7 +577,7 @@ function AnfragenView({incomingRequests,sentRequests,users,onAccept,onComplete,o
         <li key={req.id} style={s.sentCard}>
           <span style={{...s.tradeBadgePurple,background:statusColor(req.status)}}>{statusLabel(req.status)}</span>
           <span style={{flex:1}}><b>{stickerLabel(req.sticker_id)}</b> → <b>{nameOf(req.to_user_id)}</b></span>
-          {req.status==="pending"&&<button style={{...s.declineBtn,padding:"4px 10px",fontSize:11.5,cursor:"pointer",border:"1px solid #b3401a",color:"#b3401a",flex:"unset"}} disabled={busy===req.id} onClick={async()=>{setBusy(req.id);await onCancel(req.id);setBusy(null);}}>{busy===req.id?"…":"Abbrechen"}</button>}
+          {(req.status==="pending"||req.status==="accepted")&&<button style={{...s.declineBtn,padding:"4px 10px",fontSize:11.5,cursor:"pointer",border:"1px solid #b3401a",color:"#b3401a",flex:"unset"}} disabled={busy===req.id} onClick={async()=>{setBusy(req.id);await onCancel(req.id);setBusy(null);}}>{busy===req.id?"…":"Abbrechen"}</button>}
         </li>
       ))}</ul>}
     </div>
