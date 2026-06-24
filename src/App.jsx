@@ -438,6 +438,7 @@ function CollectionView({data,openSection,setOpenSection,onToggle,editable,reque
   );
 }
 
+
 function StickerCell({number,status,requested,onClick}) {
   const {s}=useTheme();
   const styleMap={missing:s.stickerMissing,have:s.stickerHave,duplicate:s.stickerDuplicate};
