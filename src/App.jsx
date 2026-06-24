@@ -415,7 +415,6 @@ function CollectionView({data,openSection,setOpenSection,onToggle,editable,reque
         for(let i=0;i<sec.count;i++){const st=data[stickerKey(sec.name,start+i)];if(st==="have")have++;else if(st==="duplicate")dup++;}
         const complete=have+dup===sec.count;
         const isOpen=openSection===sec.name;
-        const start=sec.startAt??1;
           return (
           <div key={sec.name} style={s.countryCard}>
             <button style={{...s.countryHeader,...(complete?s.countryHeaderComplete:{})}} onClick={()=>setOpenSection(isOpen?null:sec.name)}>
@@ -735,4 +734,3 @@ function NachrichtenView({profile,users,onMarkRead}) {
 function FontStyles() {
   return <style>{`@import url('https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;600;700;800&display=swap');*{box-sizing:border-box}body{margin:0;transition:background 0.2s}`}</style>;
 }
-
