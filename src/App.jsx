@@ -735,3 +735,4 @@ function NachrichtenView({profile,users,onMarkRead}) {
 function FontStyles() {
   return <style>{`@import url('https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;600;700;800&display=swap');*{box-sizing:border-box}body{margin:0;transition:background 0.2s}`}</style>;
 }
+
