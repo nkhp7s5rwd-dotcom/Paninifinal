@@ -411,7 +411,7 @@ function CollectionView({data,openSection,setOpenSection,onToggle,editable,reque
     <div style={s.countryList}>
       {DEFAULT_SECTIONS.map(sec=>{
         let have=0,dup=0;
-        const start=sec.startAt??1;
+        
         for(let i=0;i<sec.count;i++){const st=data[stickerKey(sec.name,start+i)];if(st==="have")have++;else if(st==="duplicate")dup++;}
         const complete=have+dup===sec.count;
         const isOpen=openSection===sec.name;
